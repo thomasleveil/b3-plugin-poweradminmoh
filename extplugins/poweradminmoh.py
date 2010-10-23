@@ -19,8 +19,11 @@
 #
 # CHANGELOG
 #
+# 0.2 - 2010/10/24 - Courgette 
+#     * beta release for testing and feedbacks
 #
-__version__ = '0.1'
+#
+__version__ = '0.2'
 __author__  = 'Courgette'
 
 import string
