@@ -1,0 +1,36 @@
+Power Admin Medal of Honor plugin for Big Brother Bot (www.bigbrotherbot.net)
+=============================================================================
+
+
+Description
+-----------
+
+This plugin brings Medal of Honor specific features to Bigbrotherbot.
+
+
+
+Commands
+--------
+
+
+
+
+Changelog
+---------
+
+
+
+Installation
+------------
+
+ * copy poweradminmoh.py into b3/extplugins
+ * add to the plugins section of your main b3 config file : 
+      <plugin name="poweradminmoh" config="@b3/extplugins/conf/plugin_poweradminmoh.xml" />
+
+
+Support
+-------
+
+Support is only provided on www.bigbrotherbot.net forums on the following topic :
+http://www.bigbrotherbot.net/xxxxxxxxxxxxxxxxxxxxxxxxx
+
