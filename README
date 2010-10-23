@@ -12,12 +12,20 @@ This plugin brings Medal of Honor specific features to Bigbrotherbot.
 Commands
 --------
 
-
+!pb_sv_command <punkbuster command> - Execute a punkbuster command
+!runnextround - Switch to next round, without ending current
+!restartround - Restart current round
+!kill <player> - Kill a player without scoring effects
+!team - Make the teams balanced
+!teambalance <on/off> - Set teambalancer on/off
+!changeteam [<name>] - change a player to the other team
+!match <on/off> - Set server match mode on/off
 
 
 Changelog
 ---------
 
+v0.2 - 2010/10/24 - beta release for testing and feedbacks
 
 
 Installation
@@ -32,5 +40,5 @@ Support
 -------
 
 Support is only provided on www.bigbrotherbot.net forums on the following topic :
-http://www.bigbrotherbot.net/xxxxxxxxxxxxxxxxxxxxxxxxx
+http://www.bigbrotherbot.net/forums/plugins-by-courgette/poweradmin-moh/
 

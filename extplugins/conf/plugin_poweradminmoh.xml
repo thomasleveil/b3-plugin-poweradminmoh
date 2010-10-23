@@ -1,4 +1,44 @@
 <configuration plugin="poweradminmoh">
   <settings name="commands">
+    <!-- This section defines the level required to use the commands     
+		    0 : guest
+		    1 : user
+		    2 : regular
+		    20 : moderator
+		    40 : admin
+		    60 : fulladmin
+		    80 : senioradmin
+		    100 : superadmin
+		-->
+		<!-- Also, you can define command aliases by adding it after the 
+		command name, separating them with '-' -->
+    <set name="pb_sv_command-pb">100</set>
+    
+    
+    <set name="runnextround-nextrnd">40</set>
+    <set name="restartround-restartrnd">40</set>
+    <set name="kill">40</set>
+    
+    <set name="team">20</set>
+    <set name="teambalance">20</set>
+    <set name="changeteam">20</set>
+    
+    <!-- set match mode on/off. Will wait for teams leaders to type !ready
+      and then start a count down -->
+    <set name="match">20</set>
   </settings>
+  
+  <settings name="teambalancer">
+    <!-- yes/no - if enabled, the team balancer auto balance teams every minute -->
+    <set name="enabled">no</set>
+  </settings>
+  
+  
+  <match_plugins_disable>
+    <!-- List below the plugins you want to see disabled in matchmode -->
+    <plugin>spree</plugin>
+    <plugin>adv</plugin>
+    <plugin>tk</plugin>
+    <plugin>pingwatch</plugin>
+  </match_plugins_disable>
 </configuration>
