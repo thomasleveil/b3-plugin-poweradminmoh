@@ -16,7 +16,7 @@ Commands
 !runnextround - Switch to next round, without ending current
 !restartround - Restart current round
 !kill <player> - Kill a player without scoring effects
-!team - Make the teams balanced
+!teams - Make the teams balanced
 !teambalance <on/off> - Set teambalancer on/off
 !changeteam [<name>] - change a player to the other team
 !match <on/off> - Set server match mode on/off
@@ -27,6 +27,14 @@ Changelog
 
 v0.3 - 2010/10/24 - make it compatible with v1.4.0
 v0.2 - 2010/10/24 - beta release for testing and feedbacks
+v0.4 - 2010/10/24 - Courgette (thanks to GrossKopf, foxinabox & Darkskys for tests and feedbacks)
+  * fix misspelling
+  * fix teambalancing mechanism
+  * add 2 settings for the teambalancer in config file
+  * fix !changeteam command crash
+  * !pb_sv_command : when PB respond with an error, displays the PB response instead of "There was an error processing your command"
+  * !runnextround : when MoH respond with an error message display that message instead of "There was an error processing your command"
+  * !restartround : when MoH respond with an error message display that message instead of "There was an error processing your command"
 
 
 Installation
