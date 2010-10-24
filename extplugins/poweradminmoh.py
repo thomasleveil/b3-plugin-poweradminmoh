@@ -283,10 +283,10 @@ class PoweradminmohPlugin(b3.plugin.Plugin):
             if data.lower() in ('on', 'off'):
                 if data.lower() == 'off':
                     self._enableTeamBalancer = False
-                    client.message('Teambancer is now disabled')
+                    client.message('Teambalancer is now disabled')
                 elif data.lower() == 'on':
                     self._enableTeamBalancer = True
-                    client.message('Teambancer is now enabled')
+                    client.message('Teambalancer is now enabled')
             else:
                 if client:
                     client.message("Invalid data, expecting 'on' or 'off'")
@@ -479,14 +479,14 @@ class MatchManager:
     def _countDown(self):
         self.plugin.debug('countdown: %s' % self.countDown)
         if self.countDown > 0:
-            self.console.write(('admin.yell', 'MATCH STARTING IN %s' % self.countDown, 900, 'all'))
+            self.console.write(('admin.say', 'MATCH STARTING IN %s' % self.countDown, 'all'))
             self.countDown -= 1
             if self.running:
                 self.timer = threading.Timer(1.0, self._countDown)
                 self.timer.start()
         else:    
             # make sure to have a brief big text
-            self.console.write(('admin.yell', 'FIGHT !!!', 6000, 'all'))
+            self.console.write(('admin.say', 'FIGHT !!!', 'all'))
             self.console.say('Match started. GL & HF')
             self.console.write(('admin.restartMap',))
             self.stop()
@@ -564,25 +564,32 @@ if __name__ == '__main__':
     
     ########################## ok lets test ###########################
     
+    def test_pb():        
+        superadmin.says('!pb PB_PList')
+        time.sleep(5)
+        
+    def test_straighforward_commands():
+        superadmin.says('!nextrnd')
+        time.sleep(1)
+        superadmin.says('!restartrnd')
+        time.sleep(5)
+        
+    def test_kill():
+        superadmin.says('!kill nobody')
+        superadmin.says('!kill jo')
+        time.sleep(5)
+        
+    def test_matchmode():
+        superadmin.says('!match')
+        superadmin.says('!match off')
+        time.sleep(2)
+        superadmin.says('!match on')
+        time.sleep(2)
+        joe.says('!ready')
+        time.sleep(20)
+        superadmin.says('!ready')
+        time.sleep(120)
+        
     joe.connects('Joe')
     superadmin.connects('superadmin')
-    
-    #superadmin.says('!pb PB_PList')
-    
-    superadmin.says('!nextrnd')
-    time.sleep(1)
-    superadmin.says('!restartrnd')
-    time.sleep(1)
-    
-    superadmin.says('!kill nobody')
-    superadmin.says('!kill jo')
-    time.sleep(1)
-    
-    superadmin.says('!match')
-    superadmin.says('!match off')
-    time.sleep(2)
-    superadmin.says('!match on')
-    time.sleep(2)
-    
-    
-    time.sleep(30)
+    test_matchmode()
