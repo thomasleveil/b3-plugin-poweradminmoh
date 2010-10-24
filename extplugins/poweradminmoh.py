@@ -20,18 +20,23 @@
 # CHANGELOG
 #
 # 0.2 - 2010/10/24 - Courgette 
-#     * beta release for testing and feedbacks
+#    * beta release for testing and feedbacks
+# 0.3 - 2010/10/24 - Courgette
+#    * make it compatible with v1.4.0 
 #
-#
-__version__ = '0.2'
+__version__ = '0.3'
 __author__  = 'Courgette'
 
 import string
 import b3
 import b3.events
 import b3.plugin
-from b3.parsers.frostbite.connection import FrostbiteCommandFailedError
-
+try:
+    # B3 v1.4.0+
+    from b3.parsers.frostbite.connection import FrostbiteCommandFailedError
+except ImportError:
+    # B3 v1.4.0
+    from b3.parsers.frostbite.bfbc2Connection import Bfbc2CommandFailedError as FrostbiteCommandFailedError
 
 #--------------------------------------------------------------------------------------------------
 class PoweradminmohPlugin(b3.plugin.Plugin):
