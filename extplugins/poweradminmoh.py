@@ -23,8 +23,16 @@
 #    * beta release for testing and feedbacks
 # 0.3 - 2010/10/24 - Courgette
 #    * make it compatible with v1.4.0 
+# 0.4 - 2010/10/24 - Courgette (thanks to GrossKopf, foxinabox & Darkskys for tests and feedbacks)
+#    * fix misspelling
+#    * fix teambalancing mechanism
+#    * add 2 settings for the teambalancer in config file
+#    * fix !changeteam command crash
+#    * !pb_sv_command : when PB respond with an error, displays the PB response instead of "There was an error processing your command"
+#    * !runnextround : when MoH respond with an error message display that message instead of "There was an error processing your command"
+#    * !restartround : when MoH respond with an error message display that message instead of "There was an error processing your command"
 #
-__version__ = '0.3'
+__version__ = '0.4'
 __author__  = 'Courgette'
 
 import string
@@ -42,8 +50,11 @@ except ImportError:
 class PoweradminmohPlugin(b3.plugin.Plugin):
     _adminPlugin = None
     
-    _enableTeamBalancer = None
+    _enableTeamBalancer = False
     _ignoreBalancingTill = 0
+    _tinterval = 0
+    _teamdiff = 1
+    _tcronTab = None
     
     _matchmode = False
     _match_plugin_disable = []
@@ -82,6 +93,37 @@ class PoweradminmohPlugin(b3.plugin.Plugin):
         except:
             self._enableTeamBalancer = False
             self.debug('Using default value (%s) for Teambalancer enabled', self._enableTeamBalancer)
+
+        try:
+            self._tinterval = self.config.getint('teambalancer', 'checkInterval')
+            # set a max interval for teamchecker
+            if self._tinterval > 59:
+                self._tinterval = 59
+        except:
+            self._tinterval = 0
+            self.debug('Using default value (%s) for Teambalancer Interval', self._tinterval)
+            
+    
+        try:
+            self._teamdiff = self.config.getint('teambalancer', 'maxDifference')
+            # set a minimum/maximum teamdifference
+            if self._teamdiff < 1:
+                self._teamdiff = 1
+            if self._teamdiff > 9:
+                self._teamdiff = 9
+        except:
+            self._teamdiff = 1
+            self.debug('Using default value (%s) for teamdiff', self._teamdiff)
+        
+        self.debug('Teambalancer enabled: %s' %(self._tinterval))
+        self.debug('Teambalancer check interval (in minute): %s' %(self._tinterval))
+        self.debug('Teambalancer max team difference: %s' %(self._teamdiff))
+        if self._tcronTab:
+            # remove existing crontab
+            self.console.cron - self._tcronTab
+        if self._tinterval > 0:
+            self._tcronTab = b3.cron.PluginCronTab(self, self.autobalance, 0, '*/%s' % (self._tinterval))
+            self.console.cron + self._tcronTab
 
 
     def LoadMatchMode(self):
@@ -145,6 +187,7 @@ class PoweradminmohPlugin(b3.plugin.Plugin):
         
         if self._enableTeamBalancer:
             if self.console.time() < self._ignoreBalancingTill:
+                self.debug('ignoring team balancing as the round started less than 1 minute ago')
                 return
             
             if client.team in (b3.TEAM_SPEC, b3.TEAM_UNKNOWN):
@@ -169,12 +212,8 @@ class PoweradminmohPlugin(b3.plugin.Plugin):
                     newteam = '2'
                 else:
                     newteam = '1' 
-                try:
-                    self.console.write(('admin.movePlayer', client.cid, newteam, 0, 'true'))
-                except FrostbiteCommandFailedError, err:
-                    self.warning('Error, server replied %s' % err)
-                
-                
+                self._movePlayer(client, newteam)
+
     
     ###########################################################################
     
@@ -190,7 +229,7 @@ class PoweradminmohPlugin(b3.plugin.Plugin):
                 response = self.console.write(('punkBuster.pb_sv_command', '%s' % data))
             except FrostbiteCommandFailedError, err:
                 self.error(err)
-                client.message('Error: %s' % err.response)
+                client.message('Error: %s' % err.message)
 
 
     def cmd_runnextround(self, data, client, cmd=None):
@@ -199,7 +238,10 @@ class PoweradminmohPlugin(b3.plugin.Plugin):
         """
         self.console.say('forcing next round')
         time.sleep(1)
-        self.console.write(('admin.runNextRound',))
+        try:
+            self.console.write(('admin.runNextRound',))
+        except FrostbiteCommandFailedError, err:
+            client.message('Error: %s' % err.message)
         
     def cmd_restartround(self, data, client, cmd=None):
         """\
@@ -207,7 +249,10 @@ class PoweradminmohPlugin(b3.plugin.Plugin):
         """
         self.console.say('Restart current round')
         time.sleep(1)
-        self.console.write(('admin.restartRound',))
+        try:
+            self.console.write(('admin.restartRound',))
+        except FrostbiteCommandFailedError, err:
+            client.message('Error: %s' % err.message)
 
     def cmd_kill(self, data, client, cmd=None):
         """\
@@ -225,14 +270,14 @@ class PoweradminmohPlugin(b3.plugin.Plugin):
                 try:
                     self.console.write(('admin.killPlayer', sclient.cid))
                 except FrostbiteCommandFailedError, err:
-                    client.message('Error: %s' % err.response)
+                    client.message('Error: %s' % err.message)
 
 
     def cmd_changeteam(self, data, client, cmd=None):
         """\
         [<name>] - change a player to the other team
         """
-        input = self.parseUserCmd(data)
+        input = self._adminPlugin.parseUserCmd(data)
         if not input:
             client.message('Invalid data, try !help changeteam')
         else:
@@ -243,11 +288,8 @@ class PoweradminmohPlugin(b3.plugin.Plugin):
                     newteam = '2'
                 else:
                     newteam = '1' 
-                try:
-                    self.console.write(('admin.movePlayer', sclient.cid, newteam, 0, 'true'))
-                    cmd.sayLoudOrPM(client, '%s forced to the other team' % sclient.cid)
-                except Bfbc2CommandFailedError, err:
-                    client.message('Error, server replied %s' % err)
+                self._movePlayer(sclient, newteam)
+                cmd.sayLoudOrPM(client, '%s forced to the other team' % sclient.cid)
 
     ##########################################################################
 
@@ -345,10 +387,18 @@ class PoweradminmohPlugin(b3.plugin.Plugin):
             if str(clientdata['teamId']) == '1':
                 team1players.append(name)
             elif str(clientdata['teamId']) == '2':
-                team1players.append(name)
+                team2players.append(name)
         return team1players, team2players
 
-                
+    def autobalance(self):
+        ## called from cron
+        if self._enableTeamBalancer is False:
+            return
+        if self.console.time() < self._ignoreBalancingTill:
+            self.debug('ignoring team balancing as the round started less than 1 minute ago')
+            return
+        self.teambalance()
+        
     def teambalance(self):
         if self._enableTeamBalancer:
             # get teams
@@ -356,8 +406,8 @@ class PoweradminmohPlugin(b3.plugin.Plugin):
             
             # if teams are uneven by one or even, then stop here
             gap = abs(len(team1players) - len(team2players))
-            if gap <= 1:
-                self.verbose('Teambalance: Teams are balanced, T1: %s, T2: %s (diff: %s)' %(len(team1players), len(team2players), gap))
+            if gap <= self._teamdiff:
+                self.verbose('Teambalancer: Teams are balanced, T1: %s, T2: %s (diff: %s, tolerance: %s)' %(len(team1players), len(team2players), gap, self._teamdiff))
                 return
             
             howManyMustSwitch = int(gap / 2)
@@ -375,24 +425,20 @@ class PoweradminmohPlugin(b3.plugin.Plugin):
             clients = self.console.clients.getList()
             for c in clients:
                 if c.teamId == bigTeam:
-                    teamTimeVar = c.isvar(self, 'teamtime')
-                    if not teamTimeVar:
-                        self.debug('client has no variable teamtime')
-                        c.setvar(self, 'teamtime', self.console.time())
-                        self.verbose('Client variable teamtime set to: %s' % c.var(self, 'teamtime').value)
-                    playerTeamTimes[c.cid] = teamTimeVar.value
-            
-            self.debug('playerTeamTimes: %s' % playerTeamTimes)
+                    playerTeamTimes[c] = c.var(self, 'teamtime', self.console.time()).value
+            #self.debug('playerTeamTimes: %s' % playerTeamTimes)
             sortedPlayersTeamTimes = sorted(playerTeamTimes.iteritems(), key=lambda (k,v):(v,k))
-            self.debug('sortedPlayersTeamTimes: %s' % sortedPlayersTeamTimes)
+            #self.debug('sortedPlayersTeamTimes: %s' % sortedPlayersTeamTimes)
 
             for c, teamtime in sortedPlayersTeamTimes[:howManyMustSwitch]:
-                try:
-                    self.debug('forcing %s to the other team' % c.cid)
-                    self.console.write(('admin.movePlayer', c.cid, smallTeam, 0, 'true'))
-                except FrostbiteCommandFailedError, err:
-                    self.error(err)
+                self.debug('forcing %s to the other team' % c.cid)
+                self._movePlayer(c, smallTeam)
                 
+    def _movePlayer(self, client, newTeamId):
+        try:
+            self.console.write(('admin.movePlayer', client.cid, newTeamId, 0, 'true'))
+        except FrostbiteCommandFailedError, err:
+            self.warning('Error, server replied %s' % err)                
 
 ################################################################################## 
 import threading
@@ -518,6 +564,7 @@ if __name__ == '__main__':
     from b3.fake import fakeConsole, joe, superadmin
     
     fakeConsole.gameName = 'moh'
+    
     def frostbitewrite(msg, maxRetries=1, needConfirmation=False):
         """send text to the console"""
         if type(msg) == str:
@@ -526,6 +573,7 @@ if __name__ == '__main__':
         elif type(msg) == tuple:
             print "   >>> %s" % repr(msg)
     fakeConsole.write = frostbitewrite
+        
     
     from b3.config import XmlConfigParser
     conf = XmlConfigParser()
@@ -538,7 +586,7 @@ if __name__ == '__main__':
         <set name="restartround-restartrnd">40</set>
         <set name="kill">40</set>
         
-        <set name="team">20</set>
+        <set name="teams">20</set>
         <set name="teambalance">20</set>
         <set name="changeteam">20</set>
         
@@ -547,6 +595,8 @@ if __name__ == '__main__':
       
       <settings name="teambalancer">
         <set name="enabled">no</set>
+        <set name="checkInterval">1</set>
+        <set name="maxDifference">1</set>
       </settings>
       
       
@@ -561,7 +611,29 @@ if __name__ == '__main__':
     
     p = PoweradminmohPlugin(fakeConsole, conf)
     p.onStartup()
+            
+    joe.connects('Joe')
+    joe.teamId = 1
+    superadmin.connects('superadmin')
+    superadmin.teamId = 1
     
+    def getPlayerList(self=None, maxRetries=0):
+        players = {}
+        for c in fakeConsole.clients.getList():
+            players[c.cid] = {
+                'cid' : c.cid,
+                'name' : c.name,
+                'teamId': c.teamId
+                }
+        print "getPlayerList : %s" % repr(players)
+        return players
+    fakeConsole.getPlayerList = getPlayerList
+    
+    def movePlayer(client, newTeamId):
+        client.teamId = newTeamId
+        print " %s -----> team %s" % (client.cid, newTeamId)
+    p._movePlayer = movePlayer
+        
     ########################## ok lets test ###########################
     
     def test_pb():        
@@ -589,7 +661,41 @@ if __name__ == '__main__':
         time.sleep(20)
         superadmin.says('!ready')
         time.sleep(120)
+    
+    def test_teambalancer_commands():
+        print "_enableTeamBalancer : %r" % p._enableTeamBalancer
+        superadmin.says('!teambalance OFF')
+        print "_enableTeamBalancer : %r" % p._enableTeamBalancer
+        time.sleep(1)
+        superadmin.says('!teambalance ON')
+        print "_enableTeamBalancer : %r" % p._enableTeamBalancer
+        time.sleep(1)
+        superadmin.says('!teams')
+        time.sleep(2)
+        superadmin.says('!changeteam joe')
+        time.sleep(1)
+        superadmin.says('!teams')
+        time.sleep(2)
         
-    joe.connects('Joe')
-    superadmin.connects('superadmin')
-    test_matchmode()
+    def test_teambalancer():
+        p._ignoreBalancingTill = time.time() - 1
+        p._enableTeamBalancer = True
+        # remove crontab s
+        if p._tcronTab:
+            p.console.cron - p._tcronTab
+        
+        time.sleep(1)
+        p.teambalance()
+        time.sleep(2)
+        p.teambalance()
+        time.sleep(2)
+        p.teambalance()
+        time.sleep(2)
+        p.teambalance()
+        
+    
+    test_straighforward_commands()
+    #test_kill()
+    #test_matchmode()
+    #test_teambalancer_commands()
+    #test_teambalancer()
