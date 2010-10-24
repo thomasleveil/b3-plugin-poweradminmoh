@@ -35,7 +35,9 @@ v0.4 - 2010/10/24 - Courgette (thanks to GrossKopf, foxinabox & Darkskys for tes
   * !pb_sv_command : when PB respond with an error, displays the PB response instead of "There was an error processing your command"
   * !runnextround : when MoH respond with an error message display that message instead of "There was an error processing your command"
   * !restartround : when MoH respond with an error message display that message instead of "There was an error processing your command"
-
+v0.5 - 2010/10/24 - Courgette
+  * minor fix
+  * major fix to the admin.movePlayer MoH command. This affected all team balancing features
 
 Installation
 ------------

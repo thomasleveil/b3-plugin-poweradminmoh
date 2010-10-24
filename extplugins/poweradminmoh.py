@@ -31,8 +31,11 @@
 #    * !pb_sv_command : when PB respond with an error, displays the PB response instead of "There was an error processing your command"
 #    * !runnextround : when MoH respond with an error message display that message instead of "There was an error processing your command"
 #    * !restartround : when MoH respond with an error message display that message instead of "There was an error processing your command"
+# 0.5 - 2010/10/24 - Courgette
+#    * minor fix
+#    * major fix to the admin.movePlayer MoH command. This affected all team balancing features
 #
-__version__ = '0.4'
+__version__ = '0.5'
 __author__  = 'Courgette'
 
 import string
@@ -418,7 +421,7 @@ class PoweradminmohPlugin(b3.plugin.Plugin):
                 smallTeam = 1
                 
             self.verbose('Teambalance: Teams are NOT balanced, T1: %s, T2: %s (diff: %s)' %(len(team1players), len(team2players), gap))
-            self.console.saybig('Autobalancing Teams!')
+            self.console.say('Autobalancing Teams!')
 
             ## we need to change team for howManyMustSwitch players from bigteam
             playerTeamTimes = {}
@@ -436,7 +439,7 @@ class PoweradminmohPlugin(b3.plugin.Plugin):
                 
     def _movePlayer(self, client, newTeamId):
         try:
-            self.console.write(('admin.movePlayer', client.cid, newTeamId, 0, 'true'))
+            self.console.write(('admin.movePlayer', client.cid, newTeamId, 'true'))
         except FrostbiteCommandFailedError, err:
             self.warning('Error, server replied %s' % err)                
 
