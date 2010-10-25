@@ -38,6 +38,11 @@ v0.4 - 2010/10/24 - Courgette (thanks to GrossKopf, foxinabox & Darkskys for tes
 v0.5 - 2010/10/24 - Courgette
   * minor fix
   * major fix to the admin.movePlayer MoH command. This affected all team balancing features
+v0.6 - 2010/10/25 - Courgette
+  * fix !runnextround
+  * fix !restartround
+  * matchmod will now restart round when count down is finished
+
 
 Installation
 ------------

@@ -34,11 +34,14 @@
 # 0.5 - 2010/10/24 - Courgette
 #    * minor fix
 #    * major fix to the admin.movePlayer MoH command. This affected all team balancing features
+# 0.6 - 2010/10/25 - Courgette
+#    * fix missing import that broke !runnextround and !restartround
+#    * matchmod will now restart round when count down is finished
 #
-__version__ = '0.5'
+__version__ = '0.6'
 __author__  = 'Courgette'
 
-import string
+import string, time
 import b3
 import b3.events
 import b3.plugin
@@ -537,7 +540,7 @@ class MatchManager:
             # make sure to have a brief big text
             self.console.write(('admin.say', 'FIGHT !!!', 'all'))
             self.console.say('Match started. GL & HF')
-            self.console.write(('admin.restartMap',))
+            self.console.write(('admin.restartRound',))
             self.stop()
 
     def cmd_ready(self, data, client, cmd=None): 
