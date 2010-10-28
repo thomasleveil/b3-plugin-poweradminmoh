@@ -42,6 +42,11 @@ v0.6 - 2010/10/25 - Courgette
   * fix !runnextround
   * fix !restartround
   * matchmod will now restart round when count down is finished
+0.7 - 2010/10/28 - Courgette
+  * prevent autobalancing right after a player disconnected
+  * attempt to be more fair in the choice of the player to move over to avoid the same
+    player being switch consecutively
+  * add command !swap to swap a player with another one
 
 
 Installation
