@@ -37,8 +37,13 @@
 # 0.6 - 2010/10/25 - Courgette
 #    * fix missing import that broke !runnextround and !restartround
 #    * matchmod will now restart round when count down is finished
+# 0.7 - 2010/10/28 - Courgette
+#    * prevent autobalancing right after a player disconnected
+#    * attempt to be more fair in the choice of the player to move over to avoid the same
+#      player being switch consecutively
+#    * add command !swap to swap a player with another one
 #
-__version__ = '0.6'
+__version__ = '0.7'
 __author__  = 'Courgette'
 
 import string, time
@@ -86,6 +91,7 @@ class PoweradminmohPlugin(b3.plugin.Plugin):
         self.registerEvent(b3.events.EVT_CLIENT_TEAM_CHANGE)
         self.registerEvent(b3.events.EVT_GAME_ROUND_START)
         self.registerEvent(b3.events.EVT_CLIENT_AUTH)
+        self.registerEvent(b3.events.EVT_CLIENT_DISCONNECT)
         
 
     def onLoadConfig(self):
@@ -177,6 +183,9 @@ class PoweradminmohPlugin(b3.plugin.Plugin):
         elif event.type == b3.events.EVT_GAME_ROUND_START:
             # do not balance on the 1st minute after bot start
             self._ignoreBalancingTill = self.console.time() + 60
+        elif event.type == b3.events.EVT_CLIENT_DISCONNECT:
+            # do not balance just after a player disconnected
+            self._ignoreBalancingTill = self.console.time() + 10
         elif event.type == b3.events.EVT_CLIENT_AUTH:
             self.onClientAuth(event.data, event.client)
 
@@ -187,13 +196,20 @@ class PoweradminmohPlugin(b3.plugin.Plugin):
 
 
     def onTeamChange(self, data, client):
-        #store the time of teamjoin for autobalancing purposes 
-        client.setvar(self, 'teamtime', self.console.time())
-        self.verbose('Client variable teamtime set to: %s' % client.var(self, 'teamtime').value)
+        # was this team change make by the player or forced by the bot ?
+        wasForcedByBot = client.var(self, 'movedByBot', False).value
+        if wasForcedByBot is True:
+            self.debug('client was moved over by the bot, don\'t reduce teamtime and don\'t check')
+            client.delvar(self, 'movedByBot')
+            return
+        else:
+            #store the time of teamjoin for autobalancing purposes 
+            client.setvar(self, 'teamtime', self.console.time())
+            self.verbose('Client variable teamtime set to: %s' % client.var(self, 'teamtime').value)
         
         if self._enableTeamBalancer:
             if self.console.time() < self._ignoreBalancingTill:
-                self.debug('ignoring team balancing as the round started less than 1 minute ago')
+                self.debug('ignoring team balancing right now')
                 return
             
             if client.team in (b3.TEAM_SPEC, b3.TEAM_UNKNOWN):
@@ -219,6 +235,8 @@ class PoweradminmohPlugin(b3.plugin.Plugin):
                 else:
                     newteam = '1' 
                 self._movePlayer(client, newteam)
+                # do not autobalance right after that
+                self._ignoreBalancingTill = self.console.time() + 10
 
     
     ###########################################################################
@@ -281,7 +299,7 @@ class PoweradminmohPlugin(b3.plugin.Plugin):
 
     def cmd_changeteam(self, data, client, cmd=None):
         """\
-        [<name>] - change a player to the other team
+        <name> - change a player to the other team
         """
         input = self._adminPlugin.parseUserCmd(data)
         if not input:
@@ -296,6 +314,46 @@ class PoweradminmohPlugin(b3.plugin.Plugin):
                     newteam = '1' 
                 self._movePlayer(sclient, newteam)
                 cmd.sayLoudOrPM(client, '%s forced to the other team' % sclient.cid)
+
+    def cmd_swap(self, data, client, cmd=None):
+        """\
+        <player A> <player B> - swap teams for player A and B if they are in different teams
+        """
+        input = self._adminPlugin.parseUserCmd(data)
+        if not input:
+            client.message('Invalid data, try !help swap')
+            return
+        # input[0] is player A
+        pA = input[0]
+
+        if len(input)==1 or input[1] is None:
+            client.message('Invalid data, try !help swap')
+            return
+                
+        input = self._adminPlugin.parseUserCmd(input[1])
+        if not input:
+            client.message('Invalid data, try !help swap')
+            return
+        pB = input[0]
+        
+        sclientA = self._adminPlugin.findClientPrompt(pA, client)
+        if not sclientA:
+            return
+        sclientB = self._adminPlugin.findClientPrompt(pB, client)
+        if not sclientB:
+            return
+        if sclientA.teamId not in (1, 2) and sclientB.teamId not in (1, 2):
+            client.message('could not determine players teams')
+            return
+        if sclientA.teamId == sclientB.teamId:
+            client.message('both players are in the same team. Cannot swap')
+            return
+        teamA = sclientA.teamId
+        teamB = sclientB.teamId
+        teamA, teamB = teamB, teamA
+        self._movePlayer(sclientA, teamA)
+        self._movePlayer(sclientB, teamB)
+        cmd.sayLoudOrPM(client, 'swapped player %s with %s' % (sclientA.cid, sclientB.cid))
 
     ##########################################################################
 
@@ -406,42 +464,42 @@ class PoweradminmohPlugin(b3.plugin.Plugin):
         self.teambalance()
         
     def teambalance(self):
-        if self._enableTeamBalancer:
-            # get teams
-            team1players, team2players = self.getTeams()
+        # get teams
+        team1players, team2players = self.getTeams()
+        
+        # if teams are uneven by one or even, then stop here
+        gap = abs(len(team1players) - len(team2players))
+        if gap <= self._teamdiff:
+            self.verbose('Teambalancer: Teams are balanced, T1: %s, T2: %s (diff: %s, tolerance: %s)' %(len(team1players), len(team2players), gap, self._teamdiff))
+            return
+        
+        howManyMustSwitch = int(gap / 2)
+        bigTeam = 1
+        smallTeam = 2
+        if len(team2players) > len(team1players):
+            bigTeam = 2
+            smallTeam = 1
             
-            # if teams are uneven by one or even, then stop here
-            gap = abs(len(team1players) - len(team2players))
-            if gap <= self._teamdiff:
-                self.verbose('Teambalancer: Teams are balanced, T1: %s, T2: %s (diff: %s, tolerance: %s)' %(len(team1players), len(team2players), gap, self._teamdiff))
-                return
-            
-            howManyMustSwitch = int(gap / 2)
-            bigTeam = 1
-            smallTeam = 2
-            if len(team2players) > len(team1players):
-                bigTeam = 2
-                smallTeam = 1
-                
-            self.verbose('Teambalance: Teams are NOT balanced, T1: %s, T2: %s (diff: %s)' %(len(team1players), len(team2players), gap))
-            self.console.say('Autobalancing Teams!')
+        self.verbose('Teambalance: Teams are NOT balanced, T1: %s, T2: %s (diff: %s)' %(len(team1players), len(team2players), gap))
+        self.console.say('Autobalancing Teams!')
 
-            ## we need to change team for howManyMustSwitch players from bigteam
-            playerTeamTimes = {}
-            clients = self.console.clients.getList()
-            for c in clients:
-                if c.teamId == bigTeam:
-                    playerTeamTimes[c] = c.var(self, 'teamtime', self.console.time()).value
-            #self.debug('playerTeamTimes: %s' % playerTeamTimes)
-            sortedPlayersTeamTimes = sorted(playerTeamTimes.iteritems(), key=lambda (k,v):(v,k))
-            #self.debug('sortedPlayersTeamTimes: %s' % sortedPlayersTeamTimes)
+        ## we need to change team for howManyMustSwitch players from bigteam
+        playerTeamTimes = {}
+        clients = self.console.clients.getList()
+        for c in clients:
+            if c.teamId == bigTeam:
+                playerTeamTimes[c] = c.var(self, 'teamtime', self.console.time()).value
+        #self.debug('playerTeamTimes: %s' % playerTeamTimes)
+        sortedPlayersTeamTimes = sorted(playerTeamTimes.iteritems(), key=lambda (k,v):(v,k))
+        #self.debug('sortedPlayersTeamTimes: %s' % sortedPlayersTeamTimes)
 
-            for c, teamtime in sortedPlayersTeamTimes[:howManyMustSwitch]:
-                self.debug('forcing %s to the other team' % c.cid)
-                self._movePlayer(c, smallTeam)
+        for c, teamtime in sortedPlayersTeamTimes[:howManyMustSwitch]:
+            self.debug('forcing %s to the other team' % c.cid)
+            self._movePlayer(c, smallTeam)
                 
     def _movePlayer(self, client, newTeamId):
         try:
+            client.setvar(self, 'movedByBot', True)
             self.console.write(('admin.movePlayer', client.cid, newTeamId, 'true'))
         except FrostbiteCommandFailedError, err:
             self.warning('Error, server replied %s' % err)                
@@ -595,6 +653,7 @@ if __name__ == '__main__':
         <set name="teams">20</set>
         <set name="teambalance">20</set>
         <set name="changeteam">20</set>
+        <set name="swap">20</set>
         
         <set name="match">20</set>
       </settings>
@@ -699,9 +758,28 @@ if __name__ == '__main__':
         time.sleep(2)
         p.teambalance()
         
+    def test_swap():
+        superadmin.says('!swap')
+        superadmin.says('!swap alfred')
+        superadmin.says('!swap alfred joe')
+        superadmin.says('!swap joe alfred')
+        joe.teamId = 1
+        superadmin.teamId = 1
+        superadmin.says('!swap joe god')
+        time.sleep(1)
+        joe.teamId = 2
+        superadmin.says('!swap joe god')
+        time.sleep(1)
+        if joe.teamId == 1 and superadmin.teamId == 2:
+            print "swap success"
+        else:
+            print "players where not swapped !"
+        
     
-    test_straighforward_commands()
+    test_swap()
+    #test_straighforward_commands()
     #test_kill()
     #test_matchmode()
     #test_teambalancer_commands()
     #test_teambalancer()
+    time.sleep(10)
