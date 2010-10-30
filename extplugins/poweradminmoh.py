@@ -42,8 +42,10 @@
 #    * attempt to be more fair in the choice of the player to move over to avoid the same
 #      player being switch consecutively
 #    * add command !swap to swap a player with another one
+# 0.8 - 2010/10/25 - Courgette
+#    * when balancing, broadcast who get balanced
 #
-__version__ = '0.7'
+__version__ = '0.8'
 __author__  = 'Courgette'
 
 import string, time
@@ -481,7 +483,6 @@ class PoweradminmohPlugin(b3.plugin.Plugin):
             smallTeam = 1
             
         self.verbose('Teambalance: Teams are NOT balanced, T1: %s, T2: %s (diff: %s)' %(len(team1players), len(team2players), gap))
-        self.console.say('Autobalancing Teams!')
 
         ## we need to change team for howManyMustSwitch players from bigteam
         playerTeamTimes = {}
@@ -493,8 +494,8 @@ class PoweradminmohPlugin(b3.plugin.Plugin):
         sortedPlayersTeamTimes = sorted(playerTeamTimes.iteritems(), key=lambda (k,v):(v,k))
         #self.debug('sortedPlayersTeamTimes: %s' % sortedPlayersTeamTimes)
 
+        self.console.say('forcing %s to the other team' % (', '.join(map(lambda (c,foo): c.name, sortedPlayersTeamTimes[:howManyMustSwitch]))))
         for c, teamtime in sortedPlayersTeamTimes[:howManyMustSwitch]:
-            self.debug('forcing %s to the other team' % c.cid)
             self._movePlayer(c, smallTeam)
                 
     def _movePlayer(self, client, newTeamId):
@@ -502,7 +503,7 @@ class PoweradminmohPlugin(b3.plugin.Plugin):
             client.setvar(self, 'movedByBot', True)
             self.console.write(('admin.movePlayer', client.cid, newTeamId, 'true'))
         except FrostbiteCommandFailedError, err:
-            self.warning('Error, server replied %s' % err)                
+            self.warning('Error, server replied %s' % err)
 
 ################################################################################## 
 import threading
@@ -749,12 +750,20 @@ if __name__ == '__main__':
         if p._tcronTab:
             p.console.cron - p._tcronTab
         
+        from b3.fake import simon, moderator
+        
         time.sleep(1)
         p.teambalance()
         time.sleep(2)
         p.teambalance()
         time.sleep(2)
-        p.teambalance()
+        print "- - - - - - - - - - - "
+        superadmin.teamId = 1
+        joe.teamId = 1
+        simon.connects('simon')
+        simon.teamId = 1
+        moderator.connects('moderator')
+        moderator.teamId = 1
         time.sleep(2)
         p.teambalance()
         
@@ -776,10 +785,10 @@ if __name__ == '__main__':
             print "players where not swapped !"
         
     
-    test_swap()
+    #test_swap()
     #test_straighforward_commands()
     #test_kill()
     #test_matchmode()
     #test_teambalancer_commands()
-    #test_teambalancer()
+    test_teambalancer()
     time.sleep(10)

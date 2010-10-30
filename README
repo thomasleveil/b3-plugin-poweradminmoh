@@ -47,7 +47,8 @@ v0.6 - 2010/10/25 - Courgette
   * attempt to be more fair in the choice of the player to move over to avoid the same
     player being switch consecutively
   * add command !swap to swap a player with another one
-
+0.8 - 2010/10/25 - Courgette
+  * when balancing, broadcast who get balanced
 
 Installation
 ------------
