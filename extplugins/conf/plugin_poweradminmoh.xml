@@ -23,6 +23,7 @@
     <set name="teambalance">20</set>
     <set name="changeteam">20</set>
     <set name="swap">20</set>
+    <set name="scramble">20</set>
     
     <!-- set match mode on/off. Will wait for teams leaders to type !ready
       and then start a count down -->

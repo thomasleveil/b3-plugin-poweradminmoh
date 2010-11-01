@@ -44,11 +44,13 @@
 #    * add command !swap to swap a player with another one
 # 0.8 - 2010/10/25 - Courgette
 #    * when balancing, broadcast who get balanced
+# 0.9 - 2010/11/01 - Courgette
+#    * add !scramble command to plan team scrambing on next round start
 #
-__version__ = '0.8'
+__version__ = '0.9'
 __author__  = 'Courgette'
 
-import string, time
+import string, time, random
 import b3
 import b3.events
 import b3.plugin
@@ -73,6 +75,7 @@ class PoweradminmohPlugin(b3.plugin.Plugin):
     _match_plugin_disable = []
     _matchManager = None
     
+    _scrambling_planned = False
     
     def startup(self):
         """\
@@ -185,6 +188,8 @@ class PoweradminmohPlugin(b3.plugin.Plugin):
         elif event.type == b3.events.EVT_GAME_ROUND_START:
             # do not balance on the 1st minute after bot start
             self._ignoreBalancingTill = self.console.time() + 60
+            if self._scrambling_planned:
+                self.scrambleTeams()
         elif event.type == b3.events.EVT_CLIENT_DISCONNECT:
             # do not balance just after a player disconnected
             self._ignoreBalancingTill = self.console.time() + 10
@@ -316,6 +321,18 @@ class PoweradminmohPlugin(b3.plugin.Plugin):
                     newteam = '1' 
                 self._movePlayer(sclient, newteam)
                 cmd.sayLoudOrPM(client, '%s forced to the other team' % sclient.cid)
+
+    def cmd_scramble(self, data, client, cmd=None):
+        """\
+        Toggle on/off the teams scrambling for next round
+        """
+        if self._scrambling_planned:
+            self._scrambling_planned = False
+            client.message('Teams scrambling canceled for next round')
+        else:
+            self._scrambling_planned = True
+            client.message('Teams will be scrambled at next round start')
+
 
     def cmd_swap(self, data, client, cmd=None):
         """\
@@ -497,6 +514,14 @@ class PoweradminmohPlugin(b3.plugin.Plugin):
         self.console.say('forcing %s to the other team' % (', '.join(map(lambda (c,foo): c.name, sortedPlayersTeamTimes[:howManyMustSwitch]))))
         for c, teamtime in sortedPlayersTeamTimes[:howManyMustSwitch]:
             self._movePlayer(c, smallTeam)
+             
+    def scrambleTeams(self):
+        clients = self.console.clients.getList()
+        team = 0
+        random.shuffle(clients)
+        while len(clients)>0:
+            self._movePlayer(clients.pop(), team + 1)
+            team = (team + 1)%2
                 
     def _movePlayer(self, client, newTeamId):
         try:
@@ -655,6 +680,7 @@ if __name__ == '__main__':
         <set name="teambalance">20</set>
         <set name="changeteam">20</set>
         <set name="swap">20</set>
+        <set name="scramble">20</set>
         
         <set name="match">20</set>
       </settings>
@@ -784,11 +810,30 @@ if __name__ == '__main__':
         else:
             print "players where not swapped !"
         
+    def test_scramble():
+        superadmin.says('!scramble')
+        print p._scrambling_planned
+        superadmin.says('!scramble')
+        print p._scrambling_planned
+        superadmin.says('!scramble')
+        print p._scrambling_planned
+        fakeConsole.clients.newClient('p1')
+        fakeConsole.clients.newClient('p2')
+        fakeConsole.clients.newClient('p3')
+        fakeConsole.clients.newClient('p4')
+        fakeConsole.clients.newClient('p5')
+        p.scrambleTeams()
+        print "-------------"
+        p.scrambleTeams()
+        print "-------------"
+        p.scrambleTeams()
+        print "-------------"
     
     #test_swap()
     #test_straighforward_commands()
     #test_kill()
     #test_matchmode()
     #test_teambalancer_commands()
-    test_teambalancer()
-    time.sleep(10)
+    #test_teambalancer()
+    test_scramble()
+    time.sleep(90)
