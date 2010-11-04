@@ -50,10 +50,12 @@
 #    * add !scramblemode
 #    * add !autoscramble
 #    * refactor the scrambling code
-#
+# 0.11 - 2010/11/04 - Courgette
+#    * autoscramble command parameter 'off' is not checked for the first letter anymore
+#    * fix scramble by scores
 
 
-__version__ = '0.10'
+__version__ = '0.11'
 __author__  = 'Courgette'
 
 import string, time, random
@@ -66,6 +68,7 @@ try:
 except ImportError:
     # B3 v1.4.0
     from b3.parsers.frostbite.bfbc2Connection import Bfbc2CommandFailedError as FrostbiteCommandFailedError
+from b3.parsers.frostbite.util import PlayerInfoBlock
 
 #--------------------------------------------------------------------------------------------------
 
@@ -73,6 +76,7 @@ except ImportError:
 class Scrambler:
     _plugin = None
     _getClients_method = None
+    _last_round_scores = PlayerInfoBlock([0,0])
     
     def __init__(self):
         self._getClients_method = self._getClients_randomly
@@ -82,7 +86,7 @@ class Scrambler:
         if len(clients)==0:
             return
         elif len(clients)<3:
-            self._plugin.debug("Too few players to scramble")
+            self.debug("Too few players to scramble")
         else:
             self._scrambleTeams(clients)
 
@@ -94,6 +98,9 @@ class Scrambler:
             self._getClients_method = self._getClients_by_scores
         else: 
             raise ValueError
+
+    def onRoundOverTeamScores(self, playerInfoBlock):
+        self._last_round_scores = playerInfoBlock
 
     def _scrambleTeams(self, listOfPlayers):
         team = 0
@@ -107,15 +114,34 @@ class Scrambler:
         return clients
 
     def _getClients_by_scores(self):
-        sortedScores = sorted(self._plugin.console.getPlayerScores().iteritems(), key=lambda (k,v):(int(v),k))
-        self._plugin.debug('sorted score : %r' % sortedScores)
-        sortedClients = []
-        for name,score in sortedScores:
-            sortedClients.append(self._plugin.console.getClient(name))
-        self._plugin.debug('sorted clients : %r' % map(lambda x:x.cid, sortedClients))
-        return sortedClients
+        allClients = self._plugin.console.clients.getList()
+        self.debug('all clients : %r' % [x.cid for x in allClients])
+        sumofscores = reduce(lambda x, y: x+y, [int(data['score']) for data in self._last_round_scores], 0)
+        self.debug('sum of scores is %s' % sumofscores)
+        if sumofscores == 0:
+            self.debug('no score to sort on, using ramdom strategy instead')
+            random.shuffle(allClients)
+            return allClients
+        else:
+            sortedScores = sorted(self._last_round_scores, key=lambda x:x['score'])
+            self.debug('sorted score : %r' % sortedScores)
+            sortedClients = []
+            for cid in [x['name'] for x in sortedScores]:
+                # find client object for each player score
+                clients = [c for c in allClients if c.cid == cid]
+                if clients and len(clients)>0:
+                    allClients.remove(clients[0])
+                    sortedClients.append(clients[0])
+            self.debug('sorted clients A : %r' % map(lambda x:x.cid, sortedClients))
+            random.shuffle(allClients)
+            for client in allClients:
+                # add remaining clients (they had no score ?)
+                sortedClients.append(client)
+            self.debug('sorted clients B : %r' % map(lambda x:x.cid, sortedClients))
+            return sortedClients
 
-        
+    def debug(self, msg):
+        self._plugin.debug('scramber:\t %s' % msg)
 
 
 ################################################################################## 
@@ -155,6 +181,7 @@ class PoweradminmohPlugin(b3.plugin.Plugin):
         # Register our events
         self.registerEvent(b3.events.EVT_CLIENT_TEAM_CHANGE)
         self.registerEvent(b3.events.EVT_GAME_ROUND_START)
+        self.registerEvent(b3.events.EVT_GAME_ROUND_PLAYER_SCORES)
         self.registerEvent(b3.events.EVT_CLIENT_AUTH)
         self.registerEvent(b3.events.EVT_CLIENT_DISCONNECT)
         
@@ -276,6 +303,8 @@ class PoweradminmohPlugin(b3.plugin.Plugin):
         """
         if event.type == b3.events.EVT_CLIENT_TEAM_CHANGE:
             self.onTeamChange(event.data, event.client)
+        elif event.type == b3.events.EVT_GAME_ROUND_PLAYER_SCORES:
+            self._scrambler.onRoundOverTeamScores(event.data)
         elif event.type == b3.events.EVT_GAME_ROUND_START:
             # do not balance on the 1st minute after bot start
             self._ignoreBalancingTill = self.console.time() + 60
@@ -286,7 +315,7 @@ class PoweradminmohPlugin(b3.plugin.Plugin):
                 if self._autoscramble_rounds: 
                     self.debug('auto scramble is planned for rounds')
                     self._scrambler.scrambleTeams()
-                elif self._autoscramble_maps and self.game.rounds == 0:
+                elif self._autoscramble_maps and self.console.game.rounds == 0:
                     self.debug('auto scramble is planned for maps')
                     self._scrambler.scrambleTeams()
         elif event.type == b3.events.EVT_CLIENT_DISCONNECT:
@@ -455,7 +484,7 @@ class PoweradminmohPlugin(b3.plugin.Plugin):
         if not data:
             client.message("invalid data. Expecting one of [off, round, map]")
         else:
-            if data[0].lower() == 'o':
+            if data.lower() == 'off':
                 self._autoscramble_rounds = False
                 self._autoscramble_maps = False
                 client.message('Auto scrambler now disabled')
@@ -982,6 +1011,14 @@ if __name__ == '__main__':
         superadmin.says('!scramblemode')
         superadmin.says('!scramblemode random')
         superadmin.says('!scramblemode score')
+        
+        scores = fakeConsole.getPlayerScores()
+        scorelist = ['2','name','score',len(scores)]
+        for k, v in scores.items():
+            scorelist.append(k)
+            scorelist.append(v)
+        p._scrambler._last_round_scores = PlayerInfoBlock(scorelist)
+        fakeConsole.clients.newClient(cid='p7', guid='p7')
         p._scrambler.scrambleTeams()
         print "-------------"
     
