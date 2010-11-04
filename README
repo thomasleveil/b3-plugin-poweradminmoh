@@ -51,6 +51,9 @@ v0.6 - 2010/10/25 - Courgette
   * when balancing, broadcast who get balanced
 0.9 - 2010/11/01 - Courgette
   * add !scramble command to plan team scrambing on next round start
+0.10 - 2010/11/04 - Courgette
+  * add !scramblemode, !autoscramble
+  * can scramble based on player scores
   
   
 Installation

@@ -46,8 +46,14 @@
 #    * when balancing, broadcast who get balanced
 # 0.9 - 2010/11/01 - Courgette
 #    * add !scramble command to plan team scrambing on next round start
+# 0.10 - 2010/11/04 - Courgette
+#    * add !scramblemode
+#    * add !autoscramble
+#    * refactor the scrambling code
 #
-__version__ = '0.9'
+
+
+__version__ = '0.10'
 __author__  = 'Courgette'
 
 import string, time, random
@@ -62,6 +68,57 @@ except ImportError:
     from b3.parsers.frostbite.bfbc2Connection import Bfbc2CommandFailedError as FrostbiteCommandFailedError
 
 #--------------------------------------------------------------------------------------------------
+
+
+class Scrambler:
+    _plugin = None
+    _getClients_method = None
+    
+    def __init__(self):
+        self._getClients_method = self._getClients_randomly
+
+    def scrambleTeams(self):
+        clients = self._getClients_method()
+        if len(clients)==0:
+            return
+        elif len(clients)<3:
+            self._plugin.debug("Too few players to scramble")
+        else:
+            self._scrambleTeams(clients)
+
+    def setStrategy(self, strategy):
+        """Set the scrambling strategy"""
+        if strategy.lower() == 'random':
+            self._getClients_method = self._getClients_randomly
+        elif strategy.lower() == 'score':
+            self._getClients_method = self._getClients_by_scores
+        else: 
+            raise ValueError
+
+    def _scrambleTeams(self, listOfPlayers):
+        team = 0
+        while len(listOfPlayers)>0:
+            self._plugin._movePlayer(listOfPlayers.pop(), team + 1)
+            team = (team + 1)%2
+
+    def _getClients_randomly(self):
+        clients = self._plugin.console.clients.getList()
+        random.shuffle(clients)
+        return clients
+
+    def _getClients_by_scores(self):
+        sortedScores = sorted(self._plugin.console.getPlayerScores().iteritems(), key=lambda (k,v):(int(v),k))
+        self._plugin.debug('sorted score : %r' % sortedScores)
+        sortedClients = []
+        for name,score in sortedScores:
+            sortedClients.append(self._plugin.console.getClient(name))
+        self._plugin.debug('sorted clients : %r' % map(lambda x:x.cid, sortedClients))
+        return sortedClients
+
+        
+
+
+################################################################################## 
 class PoweradminmohPlugin(b3.plugin.Plugin):
     _adminPlugin = None
     
@@ -76,6 +133,9 @@ class PoweradminmohPlugin(b3.plugin.Plugin):
     _matchManager = None
     
     _scrambling_planned = False
+    _autoscramble_rounds = False
+    _autoscramble_maps = False
+    _scrambler = Scrambler()
     
     def startup(self):
         """\
@@ -98,10 +158,13 @@ class PoweradminmohPlugin(b3.plugin.Plugin):
         self.registerEvent(b3.events.EVT_CLIENT_AUTH)
         self.registerEvent(b3.events.EVT_CLIENT_DISCONNECT)
         
+                
 
     def onLoadConfig(self):
+        self._scrambler._plugin = self
         self.LoadTeamBalancer()
         self.LoadMatchMode()
+        self.LoadScrambler()
     
 
     def LoadTeamBalancer(self):
@@ -142,7 +205,6 @@ class PoweradminmohPlugin(b3.plugin.Plugin):
             self._tcronTab = b3.cron.PluginCronTab(self, self.autobalance, 0, '*/%s' % (self._tinterval))
             self.console.cron + self._tcronTab
 
-
     def LoadMatchMode(self):
         # MATCH MODE SETUP
         self._match_plugin_disable = []
@@ -153,6 +215,35 @@ class PoweradminmohPlugin(b3.plugin.Plugin):
                 self._match_plugin_disable.append(e.text)
         except:
             self.debug('Can\'t setup match disable plugins because there is no plugins set in config')
+
+    def LoadScrambler(self):
+        try:
+            strategy = self.config.get('scrambler', 'strategy')
+            self._scrambler.setStrategy(strategy)
+            self.debug("scrambling strategy '%s' set" % strategy)
+        except:
+            self._scrambler.setStrategy('random')
+            self.debug('Using default value (%s) for scrambling strategy', self._enableTeamBalancer)
+
+        try:
+            mode = self.config.get('scrambler', 'mode')
+            if mode not in ('off', 'round', 'map'):
+                raise ValueError
+            if mode == 'off':
+                self._autoscramble_rounds = False
+                self._autoscramble_maps = False
+            elif mode == 'round':
+                self._autoscramble_rounds = True
+                self._autoscramble_maps = False
+            elif mode == 'map':
+                self._autoscramble_rounds = False
+                self._autoscramble_maps = True
+            self.debug('auto scrambler mode is : %s' % mode)
+        except:
+            self._autoscramble_rounds = False
+            self._autoscramble_maps = False
+            self.warning('Using default value (off) for auto scrambling mode')
+            
 
 
     def getCmd(self, cmd):
@@ -189,7 +280,15 @@ class PoweradminmohPlugin(b3.plugin.Plugin):
             # do not balance on the 1st minute after bot start
             self._ignoreBalancingTill = self.console.time() + 60
             if self._scrambling_planned:
-                self.scrambleTeams()
+                self.debug('manual scramble is planned')
+                self._scrambler.scrambleTeams()
+            elif not self._matchmode:
+                if self._autoscramble_rounds: 
+                    self.debug('auto scramble is planned for rounds')
+                    self._scrambler.scrambleTeams()
+                elif self._autoscramble_maps and self.game.rounds == 0:
+                    self.debug('auto scramble is planned for maps')
+                    self._scrambler.scrambleTeams()
         elif event.type == b3.events.EVT_CLIENT_DISCONNECT:
             # do not balance just after a player disconnected
             self._ignoreBalancingTill = self.console.time() + 10
@@ -333,6 +432,44 @@ class PoweradminmohPlugin(b3.plugin.Plugin):
             self._scrambling_planned = True
             client.message('Teams will be scrambled at next round start')
 
+    def cmd_scramblemode(self, data, client, cmd=None):
+        """\
+        <random|score> change the scrambling strategy
+        """
+        if not data:
+            client.message("invalid data. Expecting 'random' or 'score'")
+        else:
+            if data[0].lower() == 'r':
+                self._scrambler.setStrategy('random')
+                client.message('Scrambling strategy is now: random')
+            elif data[0].lower() == 's':
+                self._scrambler.setStrategy('score')
+                client.message('Scrambling strategy is now: score')
+            else:
+                client.message("invalid data. Expecting 'random' or 'score'")
+
+    def cmd_autoscramble(self, data, client, cmd=None):
+        """\
+        <off|round|map> manage the auto scrambler
+        """
+        if not data:
+            client.message("invalid data. Expecting one of [off, round, map]")
+        else:
+            if data[0].lower() == 'o':
+                self._autoscramble_rounds = False
+                self._autoscramble_maps = False
+                client.message('Auto scrambler now disabled')
+            elif data[0].lower() == 'r':
+                self._autoscramble_rounds = True
+                self._autoscramble_maps = False
+                client.message('Auto scrambler will run at every round start')
+            elif data[0].lower() == 'm':
+                self._autoscramble_rounds = False
+                self._autoscramble_maps = True
+                client.message('Auto scrambler will run at every map change')
+            else:
+                client.message("invalid data. Expecting one of [off, round, map]")
+                    
 
     def cmd_swap(self, data, client, cmd=None):
         """\
@@ -515,13 +652,6 @@ class PoweradminmohPlugin(b3.plugin.Plugin):
         for c, teamtime in sortedPlayersTeamTimes[:howManyMustSwitch]:
             self._movePlayer(c, smallTeam)
              
-    def scrambleTeams(self):
-        clients = self.console.clients.getList()
-        team = 0
-        random.shuffle(clients)
-        while len(clients)>0:
-            self._movePlayer(clients.pop(), team + 1)
-            team = (team + 1)%2
                 
     def _movePlayer(self, client, newTeamId):
         try:
@@ -531,6 +661,7 @@ class PoweradminmohPlugin(b3.plugin.Plugin):
             self.warning('Error, server replied %s' % err)
 
 ################################################################################## 
+
 import threading
 class MatchManager:
     plugin = None
@@ -651,7 +782,7 @@ class MatchManager:
 if __name__ == '__main__':
     ############# setup test environment ##################
     import time
-    from b3.fake import fakeConsole, joe, superadmin
+    from b3.fake import FakeConsole, fakeConsole, joe, superadmin
     
     fakeConsole.gameName = 'moh'
     
@@ -663,7 +794,8 @@ if __name__ == '__main__':
         elif type(msg) == tuple:
             print "   >>> %s" % repr(msg)
     fakeConsole.write = frostbitewrite
-        
+    fakeConsole.Events.createEvent('EVT_GAME_ROUND_PLAYER_SCORES', 'round player scores')
+    fakeConsole.Events.createEvent('EVT_GAME_ROUND_TEAM_SCORES', 'round team scores')
     
     from b3.config import XmlConfigParser
     conf = XmlConfigParser()
@@ -681,6 +813,8 @@ if __name__ == '__main__':
         <set name="changeteam">20</set>
         <set name="swap">20</set>
         <set name="scramble">20</set>
+        <set name="scramblemode">20</set>
+        <set name="autoscramble">20</set>
         
         <set name="match">20</set>
       </settings>
@@ -691,6 +825,10 @@ if __name__ == '__main__':
         <set name="maxDifference">1</set>
       </settings>
       
+      <settings name="scrambler">
+        <set name="mode">off</set>
+        <set name="strategy">random</set>
+      </settings>
       
       <match_plugins_disable>
         <plugin>spree</plugin>
@@ -706,8 +844,10 @@ if __name__ == '__main__':
             
     joe.connects('Joe')
     joe.teamId = 1
+    print 'joe.guid: %s' % joe.guid
     superadmin.connects('superadmin')
     superadmin.teamId = 1
+    print 'superadmin.guid: %s' % superadmin.guid
     
     def getPlayerList(self=None, maxRetries=0):
         players = {}
@@ -719,7 +859,19 @@ if __name__ == '__main__':
                 }
         print "getPlayerList : %s" % repr(players)
         return players
-    fakeConsole.getPlayerList = getPlayerList
+    FakeConsole.getPlayerList = getPlayerList
+    
+    def getPlayerScores(self=None, maxRetries=0):
+        scores = {}
+        for c in fakeConsole.clients.getList():
+            scores[c.cid] = random.randint(-20, 200)
+        print "getPlayerScores : %s" % repr(scores)
+        return scores
+    FakeConsole.getPlayerScores = getPlayerScores
+    
+    def getClient(self, cid, _guid=None):
+        return fakeConsole.clients.getByCID(cid)
+    FakeConsole.getClient = getClient
     
     def movePlayer(client, newTeamId):
         client.teamId = newTeamId
@@ -817,17 +969,22 @@ if __name__ == '__main__':
         print p._scrambling_planned
         superadmin.says('!scramble')
         print p._scrambling_planned
-        fakeConsole.clients.newClient('p1')
-        fakeConsole.clients.newClient('p2')
-        fakeConsole.clients.newClient('p3')
-        fakeConsole.clients.newClient('p4')
-        fakeConsole.clients.newClient('p5')
-        p.scrambleTeams()
+        fakeConsole.clients.newClient(cid='p1', guid='p1')
+        fakeConsole.clients.newClient(cid='p2', guid='p2')
+        fakeConsole.clients.newClient(cid='p3', guid='p3')
+        fakeConsole.clients.newClient(cid='p4', guid='p4')
+        fakeConsole.clients.newClient(cid='p5', guid='p5')
+        fakeConsole.clients.newClient(cid='p6', guid='p6')
+        p._scrambler.scrambleTeams()
         print "-------------"
-        p.scrambleTeams()
+        p._scrambler.scrambleTeams()
         print "-------------"
-        p.scrambleTeams()
+        superadmin.says('!scramblemode')
+        superadmin.says('!scramblemode random')
+        superadmin.says('!scramblemode score')
+        p._scrambler.scrambleTeams()
         print "-------------"
+    
     
     #test_swap()
     #test_straighforward_commands()
