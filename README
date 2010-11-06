@@ -59,10 +59,12 @@ v0.6 - 2010/10/25 - Courgette
 0.10 - 2010/11/04 - Courgette
   * add !scramblemode, !autoscramble
   * can scramble based on player scores
-0.11 - 2010/11/06 - Courgette
+0.11 - 2010/11/04 - Courgette
+  * fix auto scramble at map change
+  * fix scrambling strategy 'by scores'
+0.12 - 2010/11/06 - Courgette
    * fix !scramble which would scramble each following round (whatever !autoscramble)
    * fix !autoscramble map
-
   
 Installation
 ------------

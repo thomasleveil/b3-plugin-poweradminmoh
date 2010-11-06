@@ -50,12 +50,15 @@
 #    * add !scramblemode
 #    * add !autoscramble
 #    * refactor the scrambling code
-# 0.11 - 2010/11/06 - Courgette
+# 0.11 - 2010/11/04 - Courgette
+#    * autoscramble command parameter 'off' is not checked for the first letter anymore
+#    * fix scramble by scores
+# 0.12 - 2010/11/06 - Courgette
 #    * fix !scramble which would scramble each following round (whatever !autoscramble)
 #    * fix !autoscramble map
-#
 
-__version__ = '0.11'
+
+__version__ = '0.12'
 __author__  = 'Courgette'
 
 import string, time, random
@@ -68,6 +71,7 @@ try:
 except ImportError:
     # B3 v1.4.0
     from b3.parsers.frostbite.bfbc2Connection import Bfbc2CommandFailedError as FrostbiteCommandFailedError
+from b3.parsers.frostbite.util import PlayerInfoBlock
 
 #--------------------------------------------------------------------------------------------------
 
@@ -75,6 +79,7 @@ except ImportError:
 class Scrambler:
     _plugin = None
     _getClients_method = None
+    _last_round_scores = PlayerInfoBlock([0,0])
     
     def __init__(self):
         self._getClients_method = self._getClients_randomly
@@ -84,7 +89,7 @@ class Scrambler:
         if len(clients)==0:
             return
         elif len(clients)<3:
-            self._plugin.debug("Too few players to scramble")
+            self.debug("Too few players to scramble")
         else:
             self._scrambleTeams(clients)
 
@@ -96,6 +101,9 @@ class Scrambler:
             self._getClients_method = self._getClients_by_scores
         else: 
             raise ValueError
+
+    def onRoundOverTeamScores(self, playerInfoBlock):
+        self._last_round_scores = playerInfoBlock
 
     def _scrambleTeams(self, listOfPlayers):
         team = 0
@@ -109,15 +117,34 @@ class Scrambler:
         return clients
 
     def _getClients_by_scores(self):
-        sortedScores = sorted(self._plugin.console.getPlayerScores().iteritems(), key=lambda (k,v):(int(v),k))
-        self._plugin.debug('sorted score : %r' % sortedScores)
-        sortedClients = []
-        for name,score in sortedScores:
-            sortedClients.append(self._plugin.console.getClient(name))
-        self._plugin.debug('sorted clients : %r' % map(lambda x:x.cid, sortedClients))
-        return sortedClients
+        allClients = self._plugin.console.clients.getList()
+        self.debug('all clients : %r' % [x.cid for x in allClients])
+        sumofscores = reduce(lambda x, y: x+y, [int(data['score']) for data in self._last_round_scores], 0)
+        self.debug('sum of scores is %s' % sumofscores)
+        if sumofscores == 0:
+            self.debug('no score to sort on, using ramdom strategy instead')
+            random.shuffle(allClients)
+            return allClients
+        else:
+            sortedScores = sorted(self._last_round_scores, key=lambda x:x['score'])
+            self.debug('sorted score : %r' % sortedScores)
+            sortedClients = []
+            for cid in [x['name'] for x in sortedScores]:
+                # find client object for each player score
+                clients = [c for c in allClients if c.cid == cid]
+                if clients and len(clients)>0:
+                    allClients.remove(clients[0])
+                    sortedClients.append(clients[0])
+            self.debug('sorted clients A : %r' % map(lambda x:x.cid, sortedClients))
+            random.shuffle(allClients)
+            for client in allClients:
+                # add remaining clients (they had no score ?)
+                sortedClients.append(client)
+            self.debug('sorted clients B : %r' % map(lambda x:x.cid, sortedClients))
+            return sortedClients
 
-        
+    def debug(self, msg):
+        self._plugin.debug('scramber:\t %s' % msg)
 
 
 ################################################################################## 
@@ -157,6 +184,7 @@ class PoweradminmohPlugin(b3.plugin.Plugin):
         # Register our events
         self.registerEvent(b3.events.EVT_CLIENT_TEAM_CHANGE)
         self.registerEvent(b3.events.EVT_GAME_ROUND_START)
+        self.registerEvent(b3.events.EVT_GAME_ROUND_PLAYER_SCORES)
         self.registerEvent(b3.events.EVT_CLIENT_AUTH)
         self.registerEvent(b3.events.EVT_CLIENT_DISCONNECT)
         
@@ -278,6 +306,8 @@ class PoweradminmohPlugin(b3.plugin.Plugin):
         """
         if event.type == b3.events.EVT_CLIENT_TEAM_CHANGE:
             self.onTeamChange(event.data, event.client)
+        elif event.type == b3.events.EVT_GAME_ROUND_PLAYER_SCORES:
+            self._scrambler.onRoundOverTeamScores(event.data)
         elif event.type == b3.events.EVT_GAME_ROUND_START:
             # do not balance on the 1st minute after bot start
             self._ignoreBalancingTill = self.console.time() + 60
@@ -458,7 +488,7 @@ class PoweradminmohPlugin(b3.plugin.Plugin):
         if not data:
             client.message("invalid data. Expecting one of [off, round, map]")
         else:
-            if data[0].lower() == 'o':
+            if data.lower() == 'off':
                 self._autoscramble_rounds = False
                 self._autoscramble_maps = False
                 client.message('Auto scrambler now disabled')
@@ -990,6 +1020,14 @@ if __name__ == '__main__':
         superadmin.says('!scramblemode')
         superadmin.says('!scramblemode random')
         superadmin.says('!scramblemode score')
+        
+        scores = fakeConsole.getPlayerScores()
+        scorelist = ['2','name','score',len(scores)]
+        for k, v in scores.items():
+            scorelist.append(k)
+            scorelist.append(v)
+        p._scrambler._last_round_scores = PlayerInfoBlock(scorelist)
+        fakeConsole.clients.newClient(cid='p7', guid='p7')
         p._scrambler.scrambleTeams()
         print "============="
         time.sleep(5)
@@ -997,52 +1035,34 @@ if __name__ == '__main__':
         time.sleep(10)
         fakeConsole.queueEvent(b3.events.Event(b3.events.EVT_GAME_ROUND_START, 2, None))
     
-    def test_autoscramble():
+    def test_autoscramble_round():
+        print """
+        
+/*\\
+|*|        
+|*| Testing !autoscramble round        
+|*|        
+\\*/        
+        """
         p._scrambling_planned = False
         fakeConsole.game.g_maxrounds = 2
-        superadmin.says('!autoscramble round')
+        superadmin.says('!scramblemode random')
+        superadmin.says('!autoscramble off')
         fakeConsole.clients.newClient(cid='p1', guid='p1')
         fakeConsole.clients.newClient(cid='p2', guid='p2')
         fakeConsole.clients.newClient(cid='p3', guid='p3')
-        superadmin.says('!scramblemode score')
         print "============="
         fakeConsole.game.rounds = 0
         fakeConsole.queueEvent(b3.events.Event(b3.events.EVT_GAME_ROUND_START, fakeConsole.game, None))
-        time.sleep(2)
-        fakeConsole.game.rounds = 1
-        fakeConsole.queueEvent(b3.events.Event(b3.events.EVT_GAME_ROUND_START, fakeConsole.game, None))
-        time.sleep(2)
-        fakeConsole.game.rounds = 0
-        fakeConsole.queueEvent(b3.events.Event(b3.events.EVT_GAME_ROUND_START, fakeConsole.game, None))
-        time.sleep(5)
-        superadmin.says('!autoscramble map')
-        time.sleep(2)
-        print '=============== round 0 ============'
-        fakeConsole.game.rounds = 0
-        fakeConsole.queueEvent(b3.events.Event(b3.events.EVT_GAME_ROUND_START, fakeConsole.game, None))
         time.sleep(1)
-        print '--------------- round 1 ------------'
         fakeConsole.game.rounds = 1
         fakeConsole.queueEvent(b3.events.Event(b3.events.EVT_GAME_ROUND_START, fakeConsole.game, None))
         time.sleep(1)
-        print '--------------- round 2 ------------'
-        fakeConsole.game.rounds = 2
-        fakeConsole.queueEvent(b3.events.Event(b3.events.EVT_GAME_ROUND_START, fakeConsole.game, None))
-        time.sleep(3)
-        print '=============== round 0 ============'
         fakeConsole.game.rounds = 0
         fakeConsole.queueEvent(b3.events.Event(b3.events.EVT_GAME_ROUND_START, fakeConsole.game, None))
         time.sleep(1)
-        print '--------------- round 1 ------------'
-        fakeConsole.game.rounds = 1
-        fakeConsole.queueEvent(b3.events.Event(b3.events.EVT_GAME_ROUND_START, fakeConsole.game, None))
-        time.sleep(3)
         superadmin.says('!autoscramble round')
-        time.sleep(3)
-        print '--------------- round 2 ------------'
-        fakeConsole.game.rounds = 2
-        fakeConsole.queueEvent(b3.events.Event(b3.events.EVT_GAME_ROUND_START, fakeConsole.game, None))
-        time.sleep(3)
+        time.sleep(1)
         print '=============== round 0 ============'
         fakeConsole.game.rounds = 0
         fakeConsole.queueEvent(b3.events.Event(b3.events.EVT_GAME_ROUND_START, fakeConsole.game, None))
@@ -1054,7 +1074,67 @@ if __name__ == '__main__':
         print '--------------- round 2 ------------'
         fakeConsole.game.rounds = 2
         fakeConsole.queueEvent(b3.events.Event(b3.events.EVT_GAME_ROUND_START, fakeConsole.game, None))
-        time.sleep(3)   
+        time.sleep(1)
+        print '=============== round 0 ============'
+        fakeConsole.game.rounds = 0
+        fakeConsole.queueEvent(b3.events.Event(b3.events.EVT_GAME_ROUND_START, fakeConsole.game, None))
+        time.sleep(1)
+        print '--------------- round 1 ------------'
+        fakeConsole.game.rounds = 1
+        fakeConsole.queueEvent(b3.events.Event(b3.events.EVT_GAME_ROUND_START, fakeConsole.game, None))
+        
+           
+    
+    def test_autoscramble_map():
+        print """
+        
+/*\\
+|*|        
+|*| Testing !autoscramble map        
+|*|        
+\\*/        
+        """
+        p._scrambling_planned = False
+        fakeConsole.game.g_maxrounds = 2
+        superadmin.says('!scramblemode random')
+        superadmin.says('!autoscramble off')
+        fakeConsole.clients.newClient(cid='p1', guid='p1')
+        fakeConsole.clients.newClient(cid='p2', guid='p2')
+        fakeConsole.clients.newClient(cid='p3', guid='p3')
+        print "============="
+        fakeConsole.game.rounds = 0
+        fakeConsole.queueEvent(b3.events.Event(b3.events.EVT_GAME_ROUND_START, fakeConsole.game, None))
+        time.sleep(1)
+        fakeConsole.game.rounds = 1
+        fakeConsole.queueEvent(b3.events.Event(b3.events.EVT_GAME_ROUND_START, fakeConsole.game, None))
+        time.sleep(1)
+        fakeConsole.game.rounds = 0
+        fakeConsole.queueEvent(b3.events.Event(b3.events.EVT_GAME_ROUND_START, fakeConsole.game, None))
+        time.sleep(1)
+        superadmin.says('!autoscramble map')
+        time.sleep(1)
+        print '=============== round 0 ============'
+        fakeConsole.game.rounds = 0
+        fakeConsole.queueEvent(b3.events.Event(b3.events.EVT_GAME_ROUND_START, fakeConsole.game, None))
+        time.sleep(1)
+        print '--------------- round 1 ------------'
+        fakeConsole.game.rounds = 1
+        fakeConsole.queueEvent(b3.events.Event(b3.events.EVT_GAME_ROUND_START, fakeConsole.game, None))
+        time.sleep(1)
+        print '--------------- round 2 ------------'
+        fakeConsole.game.rounds = 2
+        fakeConsole.queueEvent(b3.events.Event(b3.events.EVT_GAME_ROUND_START, fakeConsole.game, None))
+        time.sleep(1)
+        print '=============== round 0 ============'
+        fakeConsole.game.rounds = 0
+        fakeConsole.queueEvent(b3.events.Event(b3.events.EVT_GAME_ROUND_START, fakeConsole.game, None))
+        time.sleep(1)
+        print '--------------- round 1 ------------'
+        fakeConsole.game.rounds = 1
+        fakeConsole.queueEvent(b3.events.Event(b3.events.EVT_GAME_ROUND_START, fakeConsole.game, None))
+        
+           
+           
     #test_swap()
     #test_straighforward_commands()
     #test_kill()
@@ -1062,5 +1142,6 @@ if __name__ == '__main__':
     #test_teambalancer_commands()
     #test_teambalancer()
     #test_scramble()
-    test_autoscramble()
+    test_autoscramble_round()
+    test_autoscramble_map()
     time.sleep(90)
