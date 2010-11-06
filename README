@@ -19,7 +19,12 @@ Commands
 !teams - Make the teams balanced
 !teambalance <on/off> - Set teambalancer on/off
 !changeteam [<name>] - change a player to the other team
+!swap <playerA> <playerB> - swap teams for player A and B (if in different teams)
+!scramble - schedule teams scramble at next round
+!scramblemode <random|score> - how to scramble ? randomly, by scores
+!autoscramble <off|round|map> - auto scramble at each round/map change
 !match <on/off> - Set server match mode on/off
+
 
 
 Changelog
@@ -54,7 +59,10 @@ v0.6 - 2010/10/25 - Courgette
 0.10 - 2010/11/04 - Courgette
   * add !scramblemode, !autoscramble
   * can scramble based on player scores
-  
+0.11 - 2010/11/06 - Courgette
+   * fix !scramble which would scramble each following round (whatever !autoscramble)
+   * fix !autoscramble map
+
   
 Installation
 ------------
