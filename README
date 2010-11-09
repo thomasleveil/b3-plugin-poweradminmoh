@@ -63,8 +63,12 @@ v0.6 - 2010/10/25 - Courgette
   * fix auto scramble at map change
   * fix scrambling strategy 'by scores'
 0.12 - 2010/11/06 - Courgette
-   * fix !scramble which would scramble each following round (whatever !autoscramble)
-   * fix !autoscramble map
+  * fix !scramble which would scramble each following round (whatever !autoscramble)
+  * fix !autoscramble map
+0.13 - 2010/11/09 - Courgette
+  * add maxlevel for the teambalancer
+
+  
   
 Installation
 ------------

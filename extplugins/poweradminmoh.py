@@ -56,9 +56,10 @@
 # 0.12 - 2010/11/06 - Courgette
 #    * fix !scramble which would scramble each following round (whatever !autoscramble)
 #    * fix !autoscramble map
+# 0.13 - 2010/11/09 - Courgette
+#    * add maxlevel for the teambalancer
 
-
-__version__ = '0.12'
+__version__ = '0.13'
 __author__  = 'Courgette'
 
 import string, time, random
@@ -156,6 +157,7 @@ class PoweradminmohPlugin(b3.plugin.Plugin):
     _tinterval = 0
     _teamdiff = 1
     _tcronTab = None
+    _tmaxlevel = 100
     
     _matchmode = False
     _match_plugin_disable = []
@@ -205,6 +207,12 @@ class PoweradminmohPlugin(b3.plugin.Plugin):
             self.debug('Using default value (%s) for Teambalancer enabled', self._enableTeamBalancer)
 
         try:
+            self._tmaxlevel = self.config.getint('teambalancer', 'maxlevel')
+        except:
+            self._tmaxlevel = 100
+            self.debug('Using default value (%s) for Teambalancer maxlevel', self._tmaxlevel)
+
+        try:
             self._tinterval = self.config.getint('teambalancer', 'checkInterval')
             # set a max interval for teamchecker
             if self._tinterval > 59:
@@ -225,7 +233,9 @@ class PoweradminmohPlugin(b3.plugin.Plugin):
             self._teamdiff = 1
             self.debug('Using default value (%s) for teamdiff', self._teamdiff)
         
+        
         self.debug('Teambalancer enabled: %s' %(self._tinterval))
+        self.debug('Teambalancer maxlevel: %s' %(self._tmaxlevel))
         self.debug('Teambalancer check interval (in minute): %s' %(self._tinterval))
         self.debug('Teambalancer max team difference: %s' %(self._teamdiff))
         if self._tcronTab:
@@ -309,13 +319,20 @@ class PoweradminmohPlugin(b3.plugin.Plugin):
         elif event.type == b3.events.EVT_GAME_ROUND_PLAYER_SCORES:
             self._scrambler.onRoundOverTeamScores(event.data)
         elif event.type == b3.events.EVT_GAME_ROUND_START:
+            self.debug('match mode : '.rjust(30) + str(self._matchmode))
+            self.debug('manual scramble planned : '.rjust(30) + str(self._scrambling_planned))
+            self.debug('auto scramble rounds : '.rjust(30) + str(self._autoscramble_rounds))
+            self.debug('auto scramble maps : '.rjust(30) + str(self._autoscramble_maps))
+            self.debug('self.console.game.rounds : '.rjust(30) + repr(self.console.game.rounds))
             # do not balance on the 1st minute after bot start
             self._ignoreBalancingTill = self.console.time() + 60
             if self._scrambling_planned:
                 self.debug('manual scramble is planned')
                 self._scrambler.scrambleTeams()
                 self._scrambling_planned = False
-            elif not self._matchmode:
+            elif self._matchmode:
+                self.debug('match mode on, ignoring autosramble')
+            else:
                 if self._autoscramble_rounds: 
                     self.debug('auto scramble is planned for rounds')
                     self._scrambler.scrambleTeams()
@@ -681,8 +698,10 @@ class PoweradminmohPlugin(b3.plugin.Plugin):
         sortedPlayersTeamTimes = sorted(playerTeamTimes.iteritems(), key=lambda (k,v):(v,k))
         #self.debug('sortedPlayersTeamTimes: %s' % sortedPlayersTeamTimes)
 
-        self.console.say('forcing %s to the other team' % (', '.join(map(lambda (c,foo): c.name, sortedPlayersTeamTimes[:howManyMustSwitch]))))
-        for c, teamtime in sortedPlayersTeamTimes[:howManyMustSwitch]:
+
+        playersToMove = [c for (c,teamtime) in sortedPlayersTeamTimes if c.maxLevel<self._tmaxlevel][:howManyMustSwitch]
+        self.console.say('forcing %s to the other team' % (', '.join([c.name for c in playersToMove])))
+        for c in playersToMove:
             self._movePlayer(c, smallTeam)
              
                 
@@ -861,6 +880,7 @@ if __name__ == '__main__':
         <set name="enabled">no</set>
         <set name="checkInterval">1</set>
         <set name="maxDifference">1</set>
+        <set name="maxlevel">20</set>
       </settings>
       
       <settings name="scrambler">
@@ -966,7 +986,7 @@ if __name__ == '__main__':
         if p._tcronTab:
             p.console.cron - p._tcronTab
         
-        from b3.fake import simon, moderator
+        from b3.fake import simon, moderator, FakeClient
         
         time.sleep(1)
         p.teambalance()
@@ -976,10 +996,25 @@ if __name__ == '__main__':
         print "- - - - - - - - - - - "
         superadmin.teamId = 1
         joe.teamId = 1
+        joe.groupBits = 16
         simon.connects('simon')
         simon.teamId = 1
+        simon.groupBits = 16
         moderator.connects('moderator')
         moderator.teamId = 1
+        moderator.groupBits = 16
+        p1 = FakeClient(fakeConsole, name="p1", exactName="P1", guid="p1", groupBits=16, teamId=1)
+        p1.connects('p1')
+        p2 = FakeClient(fakeConsole, name="p2", exactName="P2", guid="p2", groupBits=1, teamId=1)
+        p2.connects('p2')
+        p3 = FakeClient(fakeConsole, name="p3", exactName="P3", guid="p3", groupBits=16, teamId=1)
+        p3.connects('p3')
+        p4 = FakeClient(fakeConsole, name="p4", exactName="P4", guid="p4", groupBits=1, teamId=1)
+        p4.connects('p4')
+        p5 = FakeClient(fakeConsole, name="p5", exactName="P5", guid="p5", groupBits=16, teamId=1)
+        p5.connects('p5')
+        p6 = FakeClient(fakeConsole, name="p6", exactName="P6", guid="p6", groupBits=16, teamId=1)
+        p6.connects('p6')
         time.sleep(2)
         p.teambalance()
         
@@ -1140,8 +1175,8 @@ if __name__ == '__main__':
     #test_kill()
     #test_matchmode()
     #test_teambalancer_commands()
-    #test_teambalancer()
+    test_teambalancer()
     #test_scramble()
-    test_autoscramble_round()
-    test_autoscramble_map()
+    #test_autoscramble_round()
+    #test_autoscramble_map()
     time.sleep(90)

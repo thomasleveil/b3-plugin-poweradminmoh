@@ -39,6 +39,8 @@
     <set name="checkInterval">1</set>
     <!-- the maximum team difference in the number of players tolerated -->
     <set name="maxDifference">1</set>
+    <!-- player having a group level equal or above maxlevel won't be balanced -->
+    <set name="maxlevel">40</set>
   </settings>
   
   <settings name="scrambler">
