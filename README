@@ -18,14 +18,16 @@ Commands
 !kill <player> - Kill a player without scoring effects
 !teams - Make the teams balanced
 !teambalance <on/off> - Set teambalancer on/off
-!changeteam [<name>] - change a player to the other team
+!changeteam [<player>] - change a player to the other team
 !swap <playerA> <playerB> - swap teams for player A and B (if in different teams)
 !scramble - schedule teams scramble at next round
 !scramblemode <random|score> - how to scramble ? randomly, by scores
 !autoscramble <off|round|map> - auto scramble at each round/map change
 !match <on/off> - Set server match mode on/off
-
-
+!spect <player> - Send a player to spectator mode
+!reserveslot <player>
+!unreserveslot <player>
+!setnextmap <map name>
 
 Changelog
 ---------
@@ -67,8 +69,10 @@ v0.6 - 2010/10/25 - Courgette
   * fix !autoscramble map
 0.13 - 2010/11/09 - Courgette
   * add maxlevel for the teambalancer
-
-  
+1.0 - 2010/11/14 - Courgette
+  * add !spect command
+  * add !reserveslot and !unreserveslot commands
+  * add !setnextmap command  
   
 Installation
 ------------

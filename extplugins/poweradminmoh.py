@@ -58,8 +58,12 @@
 #    * fix !autoscramble map
 # 0.13 - 2010/11/09 - Courgette
 #    * add maxlevel for the teambalancer
+# 1.0 - 2010/11/14 - Courgette
+#    * add !spect command
+#    * add !reserveslot and !unreserveslot commands
+#    * add !setnextmap command
 
-__version__ = '0.13'
+__version__ = '1.0'
 __author__  = 'Courgette'
 
 import string, time, random
@@ -452,6 +456,74 @@ class PoweradminmohPlugin(b3.plugin.Plugin):
                 except FrostbiteCommandFailedError, err:
                     client.message('Error: %s' % err.message)
 
+    def cmd_reserveslot(self, data, client, cmd=None):
+        """\
+        <player> add player to the list of players who can use the reserved slots
+        """
+        # this will split the player name and the message
+        input = self._adminPlugin.parseUserCmd(data)
+        if input:
+            sclient = self._adminPlugin.findClientPrompt(input[0], client)
+            if not sclient:
+                # a player matchin the name was not found, a list of closest matches will be displayed
+                # we can exit here and the user will retry with a more specific player
+                return False
+            else:
+                try:
+                    self.console.write(('reservedSpectateSlots.load',))
+                    self.console.write(('reservedSpectateSlots.addPlayer', sclient.cid))
+                    self.console.write(('reservedSpectateSlots.save',))
+                    client.message('%s added to reserved slots list' % sclient.cid)
+                    sclient.message('You now have access to reserved slots thanks to %s' % client.cid)
+                except FrostbiteCommandFailedError, err:
+                    if err.message == ['PlayerAlreadyInList']:
+                        client.message('%s already has access to reserved slots' % sclient.cid)
+                    else:
+                        client.message('Error: %s' % err.message)
+
+    def cmd_unreserveslot(self, data, client, cmd=None):
+        """\
+        <player> remove player from the list of players who can use the reserved slots
+        """
+        # this will split the player name and the message
+        input = self._adminPlugin.parseUserCmd(data)
+        if input:
+            sclient = self._adminPlugin.findClientPrompt(input[0], client)
+            if not sclient:
+                # a player matchin the name was not found, a list of closest matches will be displayed
+                # we can exit here and the user will retry with a more specific player
+                return False
+            else:
+                try:
+                    self.console.write(('reservedSpectateSlots.load',))
+                    self.console.write(('reservedSpectateSlots.removePlayer', sclient.cid))
+                    self.console.write(('reservedSpectateSlots.save',))
+                    client.message('%s removed from reserved slots list' % sclient.cid)
+                    sclient.message('You don\'t have access to reserved slots anymore')
+                except FrostbiteCommandFailedError, err:
+                    if err.message == ['PlayerNotInList']:
+                        client.message('%s has no access to reserved slots' % sclient.cid)
+                    else:
+                        client.message('Error: %s' % err.message)
+
+    def cmd_spect(self, data, client, cmd=None):
+        """\
+        <player> send a player to spectator mode
+        """
+        # this will split the player name and the message
+        input = self._adminPlugin.parseUserCmd(data)
+        if input:
+            sclient = self._adminPlugin.findClientPrompt(input[0], client)
+            if not sclient:
+                # a player matchin the name was not found, a list of closest matches will be displayed
+                # we can exit here and the user will retry with a more specific player
+                return False
+            else:
+                try:
+                    self._movePlayer(sclient, 3)
+                except FrostbiteCommandFailedError, err:
+                    client.message('Error: %s' % err.message)
+
 
     def cmd_changeteam(self, data, client, cmd=None):
         """\
@@ -647,6 +719,37 @@ class PoweradminmohPlugin(b3.plugin.Plugin):
                         client.message('plugin %s enabled' % e)
 
                 self.console.say('match mode: OFF')
+
+        
+    def cmd_setnextmap(self, data, client=None, cmd=None):
+        """\
+        <mapname> - Set the nextmap (partial map name works)
+        """
+        if not data:
+            client.message('Invalid or missing data, try !help setnextmap')
+        else:
+            match = self.console.getMapsSoundingLike(data)
+            if len(match) > 1:
+                client.message('do you mean : %s ?' % string.join(match,', '))
+                return
+            if len(match) == 1:
+                levelname = match[0]
+                
+                currentLevelCycle = self.console.write(('mapList.list',))
+                try:
+                    newIndex = currentLevelCycle.index(levelname)
+                    self.console.write(('mapList.nextLevelIndex', newIndex))
+                except ValueError:
+                    # the wanted map is not in the current cycle
+                    # insert the map in the cycle
+                    mapindex = self.console.write(('mapList.nextLevelIndex',))
+                    self.console.write(('mapList.insert', mapindex, levelname))
+                if client:
+                    cmd.sayLoudOrPM(client, 'nextmap set to %s' % self.console.getEasyName(levelname))
+            else:
+                client.message('do you mean : %s.' % ", ".join(data))
+      
+      
 
     #########################################################################
     def getTeams(self):
