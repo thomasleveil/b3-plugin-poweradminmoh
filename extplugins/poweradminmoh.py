@@ -62,8 +62,10 @@
 #    * add !spect command
 #    * add !reserveslot and !unreserveslot commands
 #    * add !setnextmap command
-
-__version__ = '1.0'
+# 1.1 - 2011/06/04 - Courgette
+#    * fix teambalancer which would swap the first instead of the last guy who changed teams
+#
+__version__ = '1.1'
 __author__  = 'Courgette'
 
 import string, time, random
@@ -798,7 +800,7 @@ class PoweradminmohPlugin(b3.plugin.Plugin):
             if c.teamId == bigTeam:
                 playerTeamTimes[c] = c.var(self, 'teamtime', self.console.time()).value
         #self.debug('playerTeamTimes: %s' % playerTeamTimes)
-        sortedPlayersTeamTimes = sorted(playerTeamTimes.iteritems(), key=lambda (k,v):(v,k))
+        sortedPlayersTeamTimes = sorted(playerTeamTimes.iteritems(), key=lambda (k,v):(v,k), reverse=True)
         #self.debug('sortedPlayersTeamTimes: %s' % sortedPlayersTeamTimes)
 
 
@@ -967,6 +969,9 @@ if __name__ == '__main__':
         <set name="runnextround-nextrnd">40</set>
         <set name="restartround-restartrnd">40</set>
         <set name="kill">40</set>
+
+        <set name="reserveslot-rslot">40</set>
+        <set name="unreserveslot-uslot">40</set>
         
         <set name="teams">20</set>
         <set name="teambalance">20</set>
@@ -1271,15 +1276,25 @@ if __name__ == '__main__':
         fakeConsole.game.rounds = 1
         fakeConsole.queueEvent(b3.events.Event(b3.events.EVT_GAME_ROUND_START, fakeConsole.game, None))
         
-           
+    def test_reservedSpectateSlots():
+        print("""
+        
+/*\\
+|*|        
+|*| Testing !reserveslot        
+|*|        
+\\*/        
+        """)
+        superadmin.says('!reserveslot')
            
     #test_swap()
     #test_straighforward_commands()
     #test_kill()
     #test_matchmode()
     #test_teambalancer_commands()
-    test_teambalancer()
+    #test_teambalancer()
     #test_scramble()
     #test_autoscramble_round()
     #test_autoscramble_map()
+    test_reservedSpectateSlots()
     time.sleep(90)
